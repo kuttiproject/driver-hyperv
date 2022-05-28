@@ -49,8 +49,7 @@ func hypervCacheDir() (string, error) {
 	return workspace.Cachesubdir("driver-hyperv")
 }
 
-func vboxConfigDir() (string, error) {
-	//return workspace.Configsubdir("vbox")
+func hypervConfigDir() (string, error) {
 	return workspace.Configdir()
 }
 
@@ -107,7 +106,7 @@ func removefile(k8sversion string) error {
 
 func fetchimagelist() error {
 	// Download image list into temp directory
-	confdir, _ := vboxConfigDir()
+	confdir, _ := hypervConfigDir()
 	tempfilename := "hypervimagesnewlist.json"
 	tempfilepath := filepath.Join(confdir, tempfilename)
 

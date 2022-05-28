@@ -26,7 +26,7 @@ func (vh *Machine) runwithresults(execpath string, paramarray ...string) (string
 	return output, nil
 }
 
-var vboxCommands = map[drivercore.PredefinedCommand]func(*Machine, ...string) error{
+var hypervCommands = map[drivercore.PredefinedCommand]func(*Machine, ...string) error{
 	drivercore.RenameMachine: renamemachine,
 }
 

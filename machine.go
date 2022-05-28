@@ -214,14 +214,14 @@ func (vh *Machine) ForwardSSHPort(hostport int) error {
 // ImplementsCommand returns true if the driver implements the specified predefined command.
 // The Hyper-V driver implements drivercore.RenameMachine
 func (vh *Machine) ImplementsCommand(command drivercore.PredefinedCommand) bool {
-	_, ok := vboxCommands[command]
+	_, ok := hypervCommands[command]
 	return ok
 
 }
 
 // ExecuteCommand executes the specified predefined command.
 func (vh *Machine) ExecuteCommand(command drivercore.PredefinedCommand, params ...string) error {
-	commandfunc, ok := vboxCommands[command]
+	commandfunc, ok := hypervCommands[command]
 	if !ok {
 		return fmt.Errorf(
 			"command '%v' not implemented",

@@ -14,7 +14,7 @@ import (
 	"github.com/kuttiproject/workspace"
 )
 
-// The version and checksum of the driver-vbox image
+// The version and checksum of the driver-hyperv image
 // to use for the test.
 const (
 	TESTK8SVERSION  = "1.24"
