@@ -26,10 +26,10 @@ func TestDriverHyperV(t *testing.T) {
 
 	// Set up dummy web server for updating image list
 	// and downloading image
-	_, err := os.Stat(fmt.Sprintf("out/testserver/kutti-%v.vhdx", TESTK8SVERSION))
+	_, err := os.Stat(fmt.Sprintf("out/testserver/kutti-%v.vhdx.zip", TESTK8SVERSION))
 	if err != nil {
 		t.Fatalf(
-			"Please download the version %v kutti image, and place it in the path out/testserver/kutti-%v.vhdx",
+			"Please download the version %v kutti hyper-v image, and place it in the path out/testserver/kutti-%v.vhdx.zip",
 			TESTK8SVERSION,
 			TESTK8SVERSION,
 		)
@@ -44,7 +44,7 @@ func TestDriverHyperV(t *testing.T) {
 		func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(
 				w,
-				`{"%v":{"ImageK8sVersion":"%v","ImageChecksum":"%v","ImageStatus":"NotDownloaded", "ImageSourceURL":"http://localhost:8181/kutti-%v.vhdx"}}`,
+				`{"%v":{"ImageK8sVersion":"%v","ImageChecksum":"%v","ImageStatus":"NotDownloaded", "ImageSourceURL":"http://localhost:8181/kutti-%v.vhdx.zip"}}`,
 				TESTK8SVERSION,
 				TESTK8SVERSION,
 				TESTK8SCHECKSUM,
@@ -54,12 +54,12 @@ func TestDriverHyperV(t *testing.T) {
 	)
 
 	serverMux.HandleFunc(
-		fmt.Sprintf("/kutti-%v.vhdx", TESTK8SVERSION),
+		fmt.Sprintf("/kutti-%v.vhdx.zip", TESTK8SVERSION),
 		func(rw http.ResponseWriter, r *http.Request) {
 			http.ServeFile(
 				rw,
 				r,
-				fmt.Sprintf("out/testserver/kutti-%v.vhdx", TESTK8SVERSION),
+				fmt.Sprintf("out/testserver/kutti-%v.vhdx.zip", TESTK8SVERSION),
 			)
 		},
 	)

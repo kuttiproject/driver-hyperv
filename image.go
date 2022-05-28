@@ -1,11 +1,16 @@
 package driverhyperv
 
 import (
+	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"path"
+	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/kuttiproject/drivercore"
+	"github.com/kuttiproject/kuttilog"
 	"github.com/kuttiproject/workspace"
 )
 
@@ -54,8 +59,9 @@ func (i *Image) Fetch() error {
 		return err
 	}
 
-	tempfilename := fmt.Sprintf("kutti-k8s-%s.download", i.imageK8sVersion)
-	tempfilepath := path.Join(cachedir, tempfilename)
+	// Images are zip files for this driver
+	tempfilename := fmt.Sprintf("kutti-k8s-%s.download.zip", i.imageK8sVersion)
+	tempfilepath := filepath.Join(cachedir, tempfilename)
 
 	// Download file
 	err = workspace.DownloadFile(i.imageSourceURL, tempfilepath)
@@ -64,8 +70,46 @@ func (i *Image) Fetch() error {
 	}
 	defer workspace.RemoveFile(tempfilepath)
 
+	kuttilog.Println(kuttilog.Debug, "Decompressing downloaded file...")
+	// Unzip file
+	unzippedfilename := fmt.Sprintf("kutti-k8s-%s.download", i.imageK8sVersion)
+	unzippedfilepath := filepath.Join(cachedir, unzippedfilename)
+
+	unzipper, err := zip.OpenReader(tempfilepath)
+	if err != nil {
+		return err
+	}
+
+	defer unzipper.Close()
+
+	if len(unzipper.File) > 1 {
+		return errors.New("invalid compressed image")
+	}
+
+	srcFile, err := unzipper.File[0].Open()
+	if err != nil {
+		return err
+	}
+
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(unzippedfilepath)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(dstFile, srcFile)
+	if err != nil {
+		dstFile.Close()
+		os.Remove(unzippedfilepath)
+	}
+
+	dstFile.Close()
+	defer workspace.RemoveFile(unzippedfilepath)
+	kuttilog.Println(kuttilog.Debug, "Finished decompressing downloaded file.")
+
 	// Add
-	return i.FromFile(tempfilepath)
+	return i.FromFile(unzippedfilepath)
 }
 
 // FromFile verifies an image file on a local path and copies it to the cache.

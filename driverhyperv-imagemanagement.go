@@ -79,6 +79,7 @@ func addfromfile(k8sversion string, filepath string, checksum string) error {
 	}
 
 	if filechecksum != checksum {
+		kuttilog.Printf(kuttilog.Debug, "checksum for file %v failed.\nWanted: %v\nGot   : %v\n", filepath, checksum, filechecksum)
 		return errors.New("file  is not valid")
 	}
 
