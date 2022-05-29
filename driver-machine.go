@@ -60,6 +60,26 @@ func (vd *Driver) GetMachine(machinename string, clustername string) (drivercore
 	return machine, nil
 }
 
+func deletemachinefiles(qualifiedmachinename string) error {
+	// Delete machine disk
+	destdir, _ := diskDir()
+	destfile := filepath.Join(destdir, qualifiedmachinename+".vhdx")
+	err := os.Remove(destfile)
+	if err != nil {
+		return err
+	}
+
+	// Delete VM directory
+	machinepathbase, _ := machineDir()
+	machinepath := filepath.Join(machinepathbase, qualifiedmachinename)
+	err = os.RemoveAll(machinepath)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // DeleteMachine completely deletes a Machine.
 // It does this by running the Cmdlet:
 //   Remove-VM -Name <machinename> -Force
@@ -80,18 +100,7 @@ func (vd *Driver) DeleteMachine(machinename string, clustername string) error {
 		return fmt.Errorf("could not delete machine %s: %v", machinename, output.ErrorMessage)
 	}
 
-	// Delete machine disk
-	destdir, _ := diskDir()
-	destfile := filepath.Join(destdir, qualifiedmachinename+".vhdx")
-	err = os.Remove(destfile)
-	if err != nil {
-		return err
-	}
-
-	// Delete VM directory
-	machinepathbase, _ := machineDir()
-	machinepath := filepath.Join(machinepathbase, qualifiedmachinename)
-	err = os.RemoveAll(machinepath)
+	err = deletemachinefiles(qualifiedmachinename)
 	if err != nil {
 		return err
 	}
@@ -155,7 +164,7 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 	}
 
 	if !result.Success {
-		// TODO: Delete disk file here
+		deletemachinefiles(qualifiedmachinename)
 
 		return nil, fmt.Errorf("could not create host '%v': %v", machinename, result.ErrorMessage)
 	}
