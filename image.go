@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/kuttiproject/drivercore"
 	"github.com/kuttiproject/kuttilog"
@@ -70,12 +71,33 @@ func (i *Image) Fetch() error {
 	}
 	defer workspace.RemoveFile(tempfilepath)
 
+	return i.fromZipFile(tempfilepath, cachedir)
+}
+
+// FromFile verifies an image file on a local path and copies it to the cache.
+func (i *Image) FromFile(localfilepath string) error {
+	ext := filepath.Ext(localfilepath)
+	switch strings.ToLower(ext) {
+	case ".zip":
+		cachedir, err := hypervCacheDir()
+		if err != nil {
+			return err
+		}
+		return i.fromZipFile(localfilepath, cachedir)
+	case ".vhdx":
+		return i.fromVHDXFile(localfilepath)
+	default:
+		return errors.New("only .vhdx or .zip files allowed")
+	}
+}
+
+func (i *Image) fromZipFile(zipfilepath string, cachedir string) error {
 	kuttilog.Println(kuttilog.Debug, "Decompressing downloaded file...")
 	// Unzip file
 	unzippedfilename := fmt.Sprintf("kutti-k8s-%s.download", i.imageK8sVersion)
 	unzippedfilepath := filepath.Join(cachedir, unzippedfilename)
 
-	unzipper, err := zip.OpenReader(tempfilepath)
+	unzipper, err := zip.OpenReader(zipfilepath)
 	if err != nil {
 		return err
 	}
@@ -109,12 +131,11 @@ func (i *Image) Fetch() error {
 	kuttilog.Println(kuttilog.Debug, "Finished decompressing downloaded file.")
 
 	// Add
-	return i.FromFile(unzippedfilepath)
+	return i.fromVHDXFile(unzippedfilepath)
 }
 
-// FromFile verifies an image file on a local path and copies it to the cache.
-func (i *Image) FromFile(filepath string) error {
-	err := addfromfile(i.imageK8sVersion, filepath, i.imageChecksum)
+func (i *Image) fromVHDXFile(localfilepath string) error {
+	err := addfromfile(i.imageK8sVersion, localfilepath, i.imageChecksum)
 	if err != nil {
 		return err
 	}

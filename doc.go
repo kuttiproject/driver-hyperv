@@ -2,10 +2,10 @@
 // It uses the Hyper-V PowerShell module to talk to Hyper-V. It invokes
 // Cmdlets from the module via an interface script.
 //
-// For cluster networking, it uses the Hyper-V default switch. 
+// For cluster networking, it uses the Hyper-V default switch.
 //
 // For nodes, it creates virtual machines with pre-set settings, and
-// attaches copies of VHDX disks, maintained by the companion 
+// attaches copies of VHDX disks, maintained by the companion
 // driver-hyperv-images project.
 // For images, it uses the aforesaid VHDX files, downloading the list
 // from the URL pointed to by the ImagesSourceURL variable.
