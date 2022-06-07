@@ -72,6 +72,7 @@ func imagepathfromk8sversion(k8sversion string) (string, error) {
 }
 
 func addfromfile(k8sversion string, filepath string, checksum string) error {
+	kuttilog.Println(kuttilog.Info, "Checking image validity...")
 	filechecksum, err := workspace.ChecksumFile(filepath)
 	if err != nil {
 		return err
@@ -87,7 +88,10 @@ func addfromfile(k8sversion string, filepath string, checksum string) error {
 		return err
 	}
 
-	err = workspace.CopyFile(filepath, localfilepath, 1000, true)
+	kuttilog.Println(kuttilog.Info, "Copying image to local cache...")
+	// A 128KiB buffer should help
+	const BUFSIZE = 131072
+	err = workspace.CopyFile(filepath, localfilepath, BUFSIZE, true)
 	if err != nil {
 		return err
 	}
