@@ -128,11 +128,11 @@ func (i *Image) FromFile(localfilepath string) error {
 }
 
 func (i *Image) fromZipFile(zipfilepath string, cachedir string) error {
-	kuttilog.Println(kuttilog.Debug, "Decompressing downloaded file...")
+	kuttilog.Println(kuttilog.Info, "Decompressing downloaded file...")
 	// Unzip file
 	unzippedfilename := fmt.Sprintf("kutti-k8s-%s.download", i.imageK8sVersion)
 	unzippedfilepath := filepath.Join(cachedir, unzippedfilename)
-
+	kuttilog.Printf(kuttilog.Debug, "Decompressing '%v' into '%v'...", zipfilepath, unzippedfilepath)
 	unzipper, err := zip.OpenReader(zipfilepath)
 	if err != nil {
 		return err
@@ -164,13 +164,14 @@ func (i *Image) fromZipFile(zipfilepath string, cachedir string) error {
 
 	dstFile.Close()
 	defer workspace.RemoveFile(unzippedfilepath)
-	kuttilog.Println(kuttilog.Debug, "Finished decompressing downloaded file.")
+	kuttilog.Println(kuttilog.Info, "Finished decompressing downloaded file.")
 
 	// Add
 	return i.fromVHDXFile(unzippedfilepath)
 }
 
 func (i *Image) fromVHDXFile(localfilepath string) error {
+	kuttilog.Println(kuttilog.Info, "Starting VHDX import...")
 	err := addfromfile(i.imageK8sVersion, localfilepath, i.imageChecksum)
 	if err != nil {
 		return err
