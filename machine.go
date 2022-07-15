@@ -14,9 +14,12 @@ type hypervmachinedata struct {
 	State     string
 }
 
-const MachineStatusStarting = drivercore.MachineStatus("Starting")
-const MachineStatusStopping = drivercore.MachineStatus("Stopping")
-const MachineStatusCreating = drivercore.MachineStatus("Creating")
+// The MachineStatus* constants add some Hyper-V specific statuses.
+const (
+	MachineStatusStarting = drivercore.MachineStatus("Starting")
+	MachineStatusStopping = drivercore.MachineStatus("Stopping")
+	MachineStatusCreating = drivercore.MachineStatus("Creating")
+)
 
 // Machine implements the drivercore.Machine interface for VirtualBox
 type Machine struct {

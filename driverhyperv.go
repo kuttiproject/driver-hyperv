@@ -5,47 +5,47 @@ import (
 )
 
 func init() {
-	driver := newhypervdriver()
+	driver := &Driver{} //newhypervdriver()
 
 	drivercore.RegisterDriver(driverName, driver)
 }
 
-func newhypervdriver() *Driver {
-	result := &Driver{}
+// func newhypervdriver() *Driver {
+// 	result := &Driver{}
 
-	// find PowerShell
-	pspath, err := findPowerShell()
-	if err != nil {
-		result.status = "Error"
-		result.errormessage = err.Error()
-		return result
-	}
+// 	// find PowerShell
+// 	pspath, err := findPowerShell()
+// 	if err != nil {
+// 		result.status = "Error"
+// 		result.errormessage = err.Error()
+// 		return result
+// 	}
 
-	result.powershellpath = pspath
+// 	result.powershellpath = pspath
 
-	// Find hypervmanage script
-	scriptpath, err := findScript()
-	if err != nil {
-		result.status = "Error"
-		result.errormessage = err.Error()
-		return result
-	}
-	result.scriptpath = scriptpath
+// 	// Find hypervmanage script
+// 	scriptpath, err := findScript()
+// 	if err != nil {
+// 		result.status = "Error"
+// 		result.errormessage = err.Error()
+// 		return result
+// 	}
+// 	result.scriptpath = scriptpath
 
-	// Check driver status
-	driverstatus, err := result.runwithresults("checkdriver")
-	if err != nil {
-		result.status = "Error"
-		result.errormessage = err.Error()
-		return result
-	}
+// 	// Check driver status
+// 	driverstatus, err := result.runwithresults("checkdriver")
+// 	if err != nil {
+// 		result.status = "Error"
+// 		result.errormessage = err.Error()
+// 		return result
+// 	}
 
-	if !driverstatus.Success {
-		result.status = "Error"
-		result.errormessage = driverstatus.ErrorMessage
-		return result
-	}
+// 	if !driverstatus.Success {
+// 		result.status = "Error"
+// 		result.errormessage = driverstatus.ErrorMessage
+// 		return result
+// 	}
 
-	result.status = "Ready"
-	return result
-}
+// 	result.status = "Ready"
+// 	return result
+// }

@@ -83,6 +83,10 @@ func writeScript(scriptpath string) error {
 }
 
 func (vd *Driver) runwithresults(args ...string) (*driverresult, error) {
+	if !vd.validate() {
+		return nil, vd
+	}
+
 	powershellargs := []string{
 		"-NoProfile",
 		"-NonInteractive",

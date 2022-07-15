@@ -53,8 +53,7 @@ func (i *Image) Deprecated() bool {
 	return i.imageDeprecated
 }
 
-// Fetch downloads the image from its source URL.
-func (i *Image) Fetch() error {
+func (i *Image) fetch(progress func(int64, int64)) error {
 	cachedir, err := hypervCacheDir()
 	if err != nil {
 		return err
@@ -65,13 +64,50 @@ func (i *Image) Fetch() error {
 	tempfilepath := filepath.Join(cachedir, tempfilename)
 
 	// Download file
-	err = workspace.DownloadFile(i.imageSourceURL, tempfilepath)
+	if progress != nil {
+		err = workspace.DownloadFileWithProgress(
+			i.imageSourceURL,
+			tempfilepath,
+			progress,
+		)
+	} else {
+		err = workspace.DownloadFile(i.imageSourceURL, tempfilepath)
+	}
 	if err != nil {
 		return err
 	}
 	defer workspace.RemoveFile(tempfilepath)
 
 	return i.fromZipFile(tempfilepath, cachedir)
+}
+
+// Fetch downloads the image from its source URL.
+func (i *Image) Fetch() error {
+	return i.fetch(nil)
+	// cachedir, err := hypervCacheDir()
+	// if err != nil {
+	// 	return err
+	// }
+
+	// // Images are zip files for this driver
+	// tempfilename := fmt.Sprintf("kutti-k8s-%s.download.zip", i.imageK8sVersion)
+	// tempfilepath := filepath.Join(cachedir, tempfilename)
+
+	// // Download file
+	// err = workspace.DownloadFile(i.imageSourceURL, tempfilepath)
+	// if err != nil {
+	// 	return err
+	// }
+	// defer workspace.RemoveFile(tempfilepath)
+
+	// return i.fromZipFile(tempfilepath, cachedir)
+}
+
+// FetchWithProgress downloads the image from the driver repository into the
+// local cache, and reports progress via the supplied callback. The callback
+// reports current and total in bytes.
+func (i *Image) FetchWithProgress(progress func(current int64, total int64)) error {
+	return i.fetch(progress)
 }
 
 // FromFile verifies an image file on a local path and copies it to the cache.

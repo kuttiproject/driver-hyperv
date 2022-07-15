@@ -22,6 +22,10 @@ func (vd *Driver) QualifiedMachineName(machinename string, clustername string) s
 //   Get-VM
 // through an interface script.
 func (vd *Driver) ListMachines() ([]drivercore.Machine, error) {
+	if !vd.validate() {
+		return nil, vd
+	}
+
 	output, err := vd.runwithresults("listmachines")
 	if err != nil {
 		return nil, fmt.Errorf("could not get list of VMs: %v", err)
@@ -44,6 +48,10 @@ func (vd *Driver) ListMachines() ([]drivercore.Machine, error) {
 //   Get-VM -Name <machinename>
 // through an interface script.
 func (vd *Driver) GetMachine(machinename string, clustername string) (drivercore.Machine, error) {
+	if !vd.validate() {
+		return nil, vd
+	}
+
 	machine := &Machine{
 		driver:      vd,
 		name:        machinename,
@@ -86,6 +94,10 @@ func deletemachinefiles(qualifiedmachinename string) error {
 // through an interface script.
 // It also deletes the VM disk files and the directory containing the VM files.
 func (vd *Driver) DeleteMachine(machinename string, clustername string) error {
+	if !vd.validate() {
+		return vd
+	}
+
 	qualifiedmachinename := vd.QualifiedMachineName(machinename, clustername)
 	output, err := vd.runwithresults(
 		"deletemachine",
@@ -124,9 +136,13 @@ func (vd *Driver) DeleteMachine(machinename string, clustername string) error {
 // The second turns off dynamic memory and checkpoints on the VM, and sets memory
 // to 2GB and core count to 2 (hardcoded for now).
 func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion string) (drivercore.Machine, error) {
+	if !vd.validate() {
+		return nil, vd
+	}
+
 	qualifiedmachinename := vd.QualifiedMachineName(machinename, clustername)
 
-	kuttilog.Println(2, "Importing image...")
+	kuttilog.Println(kuttilog.Info, "Importing image...")
 
 	vhdfile, err := imagepathfromk8sversion(k8sversion)
 	if err != nil {
@@ -170,7 +186,7 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 	}
 
 	// Start the host
-	kuttilog.Println(2, "Starting host...")
+	kuttilog.Println(kuttilog.Info, "Starting host...")
 	err = newmachine.Start()
 	if err != nil {
 		return newmachine, err
@@ -184,16 +200,16 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 	// up to three times.
 	ipSet := false
 	for ipretries := 1; ipretries < 4; ipretries++ {
-		kuttilog.Printf(2, "Fetching IP address (attempt %v/3)...", ipretries)
+		kuttilog.Printf(kuttilog.Info, "Fetching IP address (attempt %v/3)...", ipretries)
 
 		if newmachine.savedipaddress != "" {
 			// TODO: verify IP address here
-			kuttilog.Printf(2, "Obtained IP address '%v'", newmachine.savedipaddress)
+			kuttilog.Printf(kuttilog.Info, "Obtained IP address '%v'", newmachine.savedipaddress)
 			ipSet = true
 			break
 		}
 
-		kuttilog.Printf(2, "Failed. Waiting %v seconds before retry...", ipretries*10)
+		kuttilog.Printf(kuttilog.Info, "Failed. Waiting %v seconds before retry...", ipretries*10)
 		time.Sleep(time.Duration(ipretries*10) * time.Second)
 
 		newmachine.get()
@@ -205,21 +221,21 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 
 	// Change the name
 	for renameretries := 1; renameretries < 4; renameretries++ {
-		kuttilog.Printf(2, "Renaming host (attempt %v/3)...", renameretries)
+		kuttilog.Printf(kuttilog.Info, "Renaming host (attempt %v/3)...", renameretries)
 		err = renamemachine(newmachine, machinename)
 		if err == nil {
 			break
 		}
-		kuttilog.Printf(2, "Failed. Waiting %v seconds before retry...", renameretries*10)
+		kuttilog.Printf(kuttilog.Info, "Failed. Waiting %v seconds before retry...", renameretries*10)
 		time.Sleep(time.Duration(renameretries*10) * time.Second)
 	}
 
 	if err != nil {
 		return newmachine, err
 	}
-	kuttilog.Println(2, "Host renamed.")
+	kuttilog.Println(kuttilog.Info, "Host renamed.")
 
-	kuttilog.Println(2, "Stopping host...")
+	kuttilog.Println(kuttilog.Info, "Stopping host...")
 	newmachine.Stop()
 	// newhost.WaitForStateChange(25)
 
