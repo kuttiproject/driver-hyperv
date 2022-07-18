@@ -12,9 +12,17 @@ import (
 	"github.com/kuttiproject/workspace"
 )
 
-// QualifiedMachineName returns a name in the form <clustername>-<machinename>
+func currentusershortname() string {
+	// Windows populates the environment variable USERNAME with the login name of the
+	// current user.
+	return os.ExpandEnv("$USERNAME")
+}
+
+// QualifiedMachineName returns a name in the form <username>-<clustername>-<machinename>.
+// The <username> part is needed for this driver because Hyper-V VM names are machine-wide.
+// It separates nodes created by different users.
 func (vd *Driver) QualifiedMachineName(machinename string, clustername string) string {
-	return clustername + "-" + machinename
+	return fmt.Sprintf("%v-%v-%v", currentusershortname(), clustername, machinename)
 }
 
 // ListMachines returns a list of VMS.

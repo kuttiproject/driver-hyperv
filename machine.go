@@ -48,9 +48,9 @@ func (hmd *hypervmachinedata) Machine(driver *Driver) *Machine {
 
 	nameparts := strings.Split(hmd.Name, "-")
 
-	if len(nameparts) > 1 {
-		clustername = nameparts[0]
-		machinename = nameparts[1]
+	if len(nameparts) > 2 {
+		clustername = nameparts[1]
+		machinename = nameparts[2]
 	} else {
 		machinename = nameparts[0]
 	}
