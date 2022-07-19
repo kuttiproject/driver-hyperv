@@ -14,4 +14,4 @@ The releases of that repository are the default source for this driver. The list
 
 ## Windows-only
 
-This driver only works on the Windows family of operating systems.
+This driver only works on Windows operating systems, from Windows 10 onwards.

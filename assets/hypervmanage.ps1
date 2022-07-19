@@ -59,18 +59,18 @@ Function Test-Driver {
 Function Get-KuttiVMList() {
     $result = getresult
     Try {
-        $vmlist = Get-VM | 
-        Select-Object Name, 
-        @{Name = "IPAddress"; Expression = { IfNull $_.NetworkAdapters[0].IPAddresses[0] "" } },
-        @{Name = "State"; Expression = { $_.State.ToString() } } 
+        $vmlist = Get-VM | Select-Object Name,
+                    @{Name = "IPAddress"; Expression = { IfNull $_.NetworkAdapters[0].IPAddresses[0] "" } },
+                    @{Name = "State"; Expression = { $_.State.ToString() } } 
         $vmresult = [PSCustomObject] @{VMList = $vmlist }
         $result.Success = $true
         $result.PayLoad = $vmresult
-        $result | ConvertTo-Json
     }
     Catch {
         $result.ErrorMessage = "could not retrieve VMs"
     }
+
+    $result | ConvertTo-Json
 }
 
 Function Get-KuttiVM() {
@@ -85,12 +85,6 @@ Function Get-KuttiVM() {
     }
     Else {
         Try {
-            # $vm = Get-VM -Name $machineName -ErrorAction Stop | 
-            # Select-Object Name, @{Name = "IPAddress"; Expression = { IsNull $_.NetworkAdapters[0].IPAddresses[0] "" } }, @{Name = "State"; Expression = { $_.State.ToString() } } 
-            
-            # $vmresult = [PSCustomObject]@{
-            #     Machine = $vm
-            # }
             $vmresult = getkuttivmobject $machineName
     
             $result.Success = $true
@@ -218,11 +212,6 @@ Function Wait-KuttiVM() {
         Try {
             Wait-VM -ErrorAction Stop -VMName $machineName -Timeout $timeOutSeconds @params
 
-            # $vm = Get-VM -Name $machineName -ErrorAction Stop | 
-            # Select-Object Name, @{Name = "IPAddress"; Expression = { IsNull $_.NetworkAdapters[0].IPAddresses[0] "" } }, @{Name = "State"; Expression = { $_.State.ToString() } } 
-            # $vmresult = [PSCustomObject]@{
-            #     Machine = $vm
-            # }
             $vmresult = getkuttivmobject $machineName
             $result.Success = $true
             $result.PayLoad = $vmresult

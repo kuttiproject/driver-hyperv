@@ -11,7 +11,8 @@ func (vd *Driver) UpdateImageList() error {
 	return fetchimagelist()
 }
 
-// ValidK8sVersion returns true if the specified Kubernetes version is available.
+// ValidK8sVersion returns true if the specified Kubernetes version is currently
+// supported.
 func (vd *Driver) ValidK8sVersion(k8sversion string) bool {
 	err := imageconfigmanager.Load()
 	if err != nil {
@@ -22,7 +23,7 @@ func (vd *Driver) ValidK8sVersion(k8sversion string) bool {
 	return ok
 }
 
-// K8sVersions returns all Kubernetes versions currently supported by kutti.
+// K8sVersions returns all Kubernetes versions currently supported.
 func (vd *Driver) K8sVersions() []string {
 	err := imageconfigmanager.Load()
 	if err != nil {

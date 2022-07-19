@@ -7,6 +7,7 @@
 // For nodes, it creates virtual machines with pre-set settings, and
 // attaches copies of VHDX disks, maintained by the companion
 // driver-hyperv-images project.
+//
 // For images, it uses the aforesaid VHDX files, downloading the list
 // from the URL pointed to by the ImagesSourceURL variable.
 //

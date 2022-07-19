@@ -21,7 +21,7 @@ var ImagesSourceURL = "https://github.com/kuttiproject/driver-hyperv-images/rele
 
 var (
 	imagedata             = &imageconfigdata{}
-	imageconfigmanager, _ = workspace.NewFileConfigmanager(imagesConfigFile, imagedata)
+	imageconfigmanager, _ = workspace.NewFileConfigManager(imagesConfigFile, imagedata)
 )
 
 type imageconfigdata struct {
@@ -41,16 +41,16 @@ func (icd *imageconfigdata) Deserialize(data []byte) error {
 	return err
 }
 
-func (icd *imageconfigdata) Setdefaults() {
+func (icd *imageconfigdata) SetDefaults() {
 	icd.images = defaultimages()
 }
 
 func hypervCacheDir() (string, error) {
-	return workspace.Cachesubdir("driver-hyperv")
+	return workspace.CacheSubDir("driver-hyperv")
 }
 
 func hypervConfigDir() (string, error) {
-	return workspace.Configdir()
+	return workspace.ConfigDir()
 }
 
 func defaultimages() map[string]*Image {
@@ -127,7 +127,7 @@ func fetchimagelist() error {
 
 	// Load into object
 	tempimagedata := &imageconfigdata{}
-	tempconfigmanager, err := workspace.NewFileConfigmanager(tempfilename, tempimagedata)
+	tempconfigmanager, err := workspace.NewFileConfigManager(tempfilename, tempimagedata)
 	if err != nil {
 		return err
 	}

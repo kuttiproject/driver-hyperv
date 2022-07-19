@@ -14,22 +14,22 @@ type Driver struct {
 	errormessage   string
 }
 
-// Name returns "hyperv"
+// Name returns "hyperv".
 func (vd *Driver) Name() string {
 	return driverName
 }
 
-// Description returns "Kutti driver for Hyper-V"
+// Description returns "Kutti driver for Hyper-V".
 func (vd *Driver) Description() string {
 	return driverDescription
 }
 
-// UsesPerClusterNetworking returns false
+// UsesPerClusterNetworking returns false.
 func (vd *Driver) UsesPerClusterNetworking() bool {
 	return false
 }
 
-// UsesNATNetworking returns false
+// UsesNATNetworking returns false.
 func (vd *Driver) UsesNATNetworking() bool {
 	return false
 }
@@ -76,12 +76,13 @@ func (vd *Driver) validate() bool {
 	return true
 }
 
-// Status returns current driver status
+// Status returns current driver status.
 func (vd *Driver) Status() string {
 	vd.validate()
 	return vd.status
 }
 
+// Error returns the last error returned in the driver.
 func (vd *Driver) Error() string {
 	vd.validate()
 	return vd.errormessage

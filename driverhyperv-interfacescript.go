@@ -18,7 +18,7 @@ type driverresult struct {
 	Payload      map[string]interface{}
 }
 
-const scriptVersion = "0.1"
+const scriptVersion = "0.2"
 
 var scriptname = "hypervmanage-" + scriptVersion + ".ps1"
 
@@ -39,11 +39,11 @@ func findPowerShell() (string, error) {
 }
 
 func machineDir() (string, error) {
-	return workspace.Cachesubdir("driver-hyperv-machines")
+	return workspace.CacheSubDir("driver-hyperv-machines")
 }
 
 func diskDir() (string, error) {
-	return workspace.Cachesubdir("driver-hyperv-disks")
+	return workspace.CacheSubDir("driver-hyperv-disks")
 }
 
 func findScript() (string, error) {
@@ -94,7 +94,7 @@ func (vd *Driver) runwithresults(args ...string) (*driverresult, error) {
 		vd.scriptpath,
 	}
 	powershellargs = append(powershellargs, args...)
-	resultstring, err := workspace.Runwithresults(vd.powershellpath, powershellargs...)
+	resultstring, err := workspace.RunWithResults(vd.powershellpath, powershellargs...)
 	if err != nil {
 		return nil, err
 	}

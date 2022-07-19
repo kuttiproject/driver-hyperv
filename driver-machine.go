@@ -1,7 +1,6 @@
 package driverhyperv
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,32 +22,6 @@ func currentusershortname() string {
 // It separates nodes created by different users.
 func (vd *Driver) QualifiedMachineName(machinename string, clustername string) string {
 	return fmt.Sprintf("%v-%v-%v", currentusershortname(), clustername, machinename)
-}
-
-// ListMachines returns a list of VMS.
-// It does this by running the Cmdlet:
-//   Get-VM
-// through an interface script.
-func (vd *Driver) ListMachines() ([]drivercore.Machine, error) {
-	if !vd.validate() {
-		return nil, vd
-	}
-
-	output, err := vd.runwithresults("listmachines")
-	if err != nil {
-		return nil, fmt.Errorf("could not get list of VMs: %v", err)
-	}
-
-	resultarr, ok := output.Payload["VMList"].([]hypervmachinedata)
-	if !ok {
-		return nil, errors.New("could not get list of VMs: interface error")
-	}
-
-	finalresult := make([]drivercore.Machine, 0, len(resultarr))
-	for _, item := range resultarr {
-		finalresult = append(finalresult, item.Machine(vd))
-	}
-	return finalresult, nil
 }
 
 // GetMachine returns the named machine, or an error.
@@ -128,18 +101,16 @@ func (vd *Driver) DeleteMachine(machinename string, clustername string) error {
 	return nil
 }
 
-//var ipRegex, _ = regexp.Compile(`^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$`)
-
 // NewMachine creates a VM.
 // It also starts the VM, changes the hostname, saves the IP address, and stops
 // it again.
 // It starts by copying the VHDX file appropriate for the specified k8sversion
 // to the driver cache location for VM disks.
 // It then runs the following Cmdlets, in order:
-//   $newvm New-VM -Name $machineName -Generation 1 -Path $machinePath -VHDPath $vhdpath -SwitchName "Default Switch"
+//   $newvm = New-VM -Name $machineName -Generation 1 -Path $machinePath -VHDPath $vhdpath -SwitchName "Default Switch"
 //   Set-VM $newvm -StaticMemory -MemoryStartupBytes 2147483648 -ProcessorCount 2 -CheckpointType Disabled
 // through an interface script.
-// The first creates a Hyper-V "Generation 1" VM which uses the VHDX file metntioned
+// The first creates a Hyper-V "Generation 1" VM which uses the VHDX file mentioned
 // above, and connects it to the Hyper-V default network switch.
 // The second turns off dynamic memory and checkpoints on the VM, and sets memory
 // to 2GB and core count to 2 (hardcoded for now).
@@ -245,7 +216,6 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 
 	kuttilog.Println(kuttilog.Info, "Stopping host...")
 	newmachine.Stop()
-	// newhost.WaitForStateChange(25)
 
 	newmachine.status = drivercore.MachineStatusStopped
 

@@ -189,7 +189,7 @@ func (vh *Machine) ForceStop() error {
 //   Wait-VM -ErrorAction Stop -VMName $machineName -Timeout $timeOutSeconds -For IPAddress
 // if the Machine is starting, or the command:
 //   Wait-VM -ErrorAction Stop -VMName $machineName -Timeout $timeOutSeconds -For Reboot
-// if the Macine is stopping.
+// if the Machine is stopping.
 // WaitForStateChange should be called after a call to Start, before
 // any other operation. From observation, it should not be called _before_ Stop.
 func (vh *Machine) WaitForStateChange(timeoutinseconds int) {

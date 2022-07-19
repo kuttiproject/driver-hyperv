@@ -22,7 +22,7 @@ const (
 )
 
 func TestDriverHyperV(t *testing.T) {
-	kuttilog.Setloglevel(kuttilog.Debug)
+	kuttilog.SetLogLevel(kuttilog.Debug)
 
 	// Set up dummy web server for updating image list
 	// and downloading image

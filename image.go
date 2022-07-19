@@ -25,7 +25,7 @@ type hypervimagedata struct {
 	ImageDeprecated bool
 }
 
-// Image implements the drivercore.Image interface for VirtualBox.
+// Image implements the drivercore.Image interface for Hyper-V.
 type Image struct {
 	imageK8sVersion string
 	imageChecksum   string
@@ -47,8 +47,8 @@ func (i *Image) Status() drivercore.ImageStatus {
 	return i.imageStatus
 }
 
-// Deprecated returns true if the image's version of Kubenetes is deprecated.
-// New Macines should not be created from such an image.
+// Deprecated returns true if the image's version of Kubernetes is deprecated.
+// New Machines should not be created from such an image.
 func (i *Image) Deprecated() bool {
 	return i.imageDeprecated
 }
@@ -84,23 +84,6 @@ func (i *Image) fetch(progress func(int64, int64)) error {
 // Fetch downloads the image from its source URL.
 func (i *Image) Fetch() error {
 	return i.fetch(nil)
-	// cachedir, err := hypervCacheDir()
-	// if err != nil {
-	// 	return err
-	// }
-
-	// // Images are zip files for this driver
-	// tempfilename := fmt.Sprintf("kutti-k8s-%s.download.zip", i.imageK8sVersion)
-	// tempfilepath := filepath.Join(cachedir, tempfilename)
-
-	// // Download file
-	// err = workspace.DownloadFile(i.imageSourceURL, tempfilepath)
-	// if err != nil {
-	// 	return err
-	// }
-	// defer workspace.RemoveFile(tempfilepath)
-
-	// return i.fromZipFile(tempfilepath, cachedir)
 }
 
 // FetchWithProgress downloads the image from the driver repository into the
@@ -196,7 +179,7 @@ func (i *Image) PurgeLocal() error {
 	return nil
 }
 
-// MarshalJSON returns the JSON encoding of the cluster.
+// MarshalJSON returns the JSON encoding of the image.
 func (i *Image) MarshalJSON() ([]byte, error) {
 	savedata := hypervimagedata{
 		ImageK8sVersion: i.imageK8sVersion,
@@ -210,7 +193,7 @@ func (i *Image) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON  parses and restores a JSON-encoded
-// cluster.
+// image.
 func (i *Image) UnmarshalJSON(b []byte) error {
 	var loaddata hypervimagedata
 
