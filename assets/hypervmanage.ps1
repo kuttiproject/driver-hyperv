@@ -13,7 +13,7 @@ Function getkuttivmobject {
         [string] $machineName
     )
 
-    $vm = Get-VM -Name $machineName -ErrorAction Stop | 
+    $vm = Hyper-V\Get-VM -Name $machineName -ErrorAction Stop | 
     Select-Object Name, 
     @{Name = "IPAddress"; Expression = { IfNull $_.NetworkAdapters[0].IPAddresses[0] "" } }, 
     @{Name = "State"; Expression = { $_.State.ToString() } } 
@@ -59,7 +59,7 @@ Function Test-Driver {
 Function Get-KuttiVMList() {
     $result = getresult
     Try {
-        $vmlist = Get-VM | Select-Object Name,
+        $vmlist = Hyper-V\Get-VM | Select-Object Name,
                     @{Name = "IPAddress"; Expression = { IfNull $_.NetworkAdapters[0].IPAddresses[0] "" } },
                     @{Name = "State"; Expression = { $_.State.ToString() } } 
         $vmresult = [PSCustomObject] @{VMList = $vmlist }
@@ -110,7 +110,7 @@ Function Start-KuttiVM() {
     }
     Else {
         Try {
-            Start-VM -Name $machineName -ErrorAction Stop -WarningAction Stop
+            Hyper-V\Start-VM -Name $machineName -ErrorAction Stop -WarningAction Stop
             $result.Success = $true
         }
         Catch {
@@ -144,7 +144,7 @@ Function Stop-KuttiVM() {
     }
     Else {
         Try {
-            Stop-VM -Name $machineName -ErrorAction Stop -WarningAction Stop @forceparam
+            Hyper-V\Stop-VM -Name $machineName -ErrorAction Stop -WarningAction Stop @forceparam
             $result.Success = $true
         }
         Catch {
@@ -171,8 +171,8 @@ Function New-KuttiVM() {
     }
     Else {
         Try {
-            $newvm = New-VM -Name $machineName -Generation 1 -Path $machinePath -VHDPath $vhdpath -SwitchName "Default Switch"
-            Set-VM $newvm -StaticMemory -MemoryStartupBytes 2147483648 -ProcessorCount 2 -CheckpointType Disabled
+            $newvm = Hyper-V\New-VM -Name $machineName -Generation 1 -Path $machinePath -VHDPath $vhdpath -SwitchName "Default Switch"
+            Hyper-V\Set-VM $newvm -StaticMemory -MemoryStartupBytes 2147483648 -ProcessorCount 2 -CheckpointType Disabled
 
             $result.Success = $true
         }
@@ -210,7 +210,7 @@ Function Wait-KuttiVM() {
         }
 
         Try {
-            Wait-VM -ErrorAction Stop -VMName $machineName -Timeout $timeOutSeconds @params
+            Hyper-V\Wait-VM -ErrorAction Stop Hyper-V\-VMName $machineName -Timeout $timeOutSeconds @params
 
             $vmresult = getkuttivmobject $machineName
             $result.Success = $true
@@ -236,7 +236,7 @@ Function Remove-KuttiVM() {
     }
     Else {
         Try {
-            Remove-VM -Name $machineName -ErrorAction Stop -Force
+            Hyper-V\Remove-VM -Name $machineName -ErrorAction Stop -Force
 
             $result.Success = $true
         }
