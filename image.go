@@ -123,7 +123,7 @@ func (i *Image) fromZipFile(zipfilepath string, cachedir string) error {
 
 	defer unzipper.Close()
 
-	if len(unzipper.File) > 1 {
+	if len(unzipper.File) != 1 {
 		return errors.New("invalid compressed image")
 	}
 
@@ -143,6 +143,7 @@ func (i *Image) fromZipFile(zipfilepath string, cachedir string) error {
 	if err != nil {
 		dstFile.Close()
 		os.Remove(unzippedfilepath)
+		return err
 	}
 
 	dstFile.Close()

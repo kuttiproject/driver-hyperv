@@ -1,7 +1,6 @@
 package driverhyperv
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/kuttiproject/drivercore"
@@ -32,7 +31,7 @@ var hypervCommands = map[drivercore.PredefinedCommand]func(*Machine, ...string) 
 
 func renamemachine(vh *Machine, params ...string) error {
 	newname := params[0]
-	execname := fmt.Sprintf("/home/%s/kutti-installscripts/set-hostname.sh", hypervUsername)
+	execname := "/opt/kutti/scripts/set-hostname.sh"
 
 	_, err := vh.runwithresults(
 		"/usr/bin/sudo",
