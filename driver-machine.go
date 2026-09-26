@@ -8,7 +8,6 @@ import (
 
 	"github.com/kuttiproject/drivercore"
 	"github.com/kuttiproject/kuttilog"
-	"github.com/kuttiproject/workspace"
 )
 
 func currentusershortname() string {
@@ -50,23 +49,29 @@ func (vd *Driver) GetMachine(machinename string, clustername string) (drivercore
 }
 
 func deletemachinefiles(qualifiedmachinename string) error {
+	var firstErr error
+
 	// Delete machine disk
-	destdir, _ := diskDir()
-	destfile := filepath.Join(destdir, qualifiedmachinename+".vhdx")
-	err := os.Remove(destfile)
-	if err != nil {
-		return err
+	destdir, err := diskDir()
+	if err == nil {
+		destfile := filepath.Join(destdir, qualifiedmachinename+".vhdx")
+		if err := os.Remove(destfile); err != nil && !os.IsNotExist(err) {
+			firstErr = err
+		}
 	}
 
 	// Delete VM directory
-	machinepathbase, _ := machineDir()
-	machinepath := filepath.Join(machinepathbase, qualifiedmachinename)
-	err = os.RemoveAll(machinepath)
-	if err != nil {
-		return err
+	machinepathbase, err := machineDir()
+	if err == nil {
+		machinepath := filepath.Join(machinepathbase, qualifiedmachinename)
+		if err := os.RemoveAll(machinepath); err != nil && !os.IsNotExist(err) {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
 	}
 
-	return nil
+	return firstErr
 }
 
 // DeleteMachine completely deletes a Machine.
@@ -79,6 +84,7 @@ func (vd *Driver) DeleteMachine(machinename string, clustername string) error {
 		return vd
 	}
 
+	kuttilog.Printf(kuttilog.Info, "Deleting machine '%s'...", machinename)
 	qualifiedmachinename := vd.QualifiedMachineName(machinename, clustername)
 	output, err := vd.runwithresults(
 		"deletemachine",
@@ -95,7 +101,7 @@ func (vd *Driver) DeleteMachine(machinename string, clustername string) error {
 
 	err = deletemachinefiles(qualifiedmachinename)
 	if err != nil {
-		return err
+		kuttilog.Printf(kuttilog.Debug, "Notice: could not delete some machine files for %s: %v", machinename, err)
 	}
 
 	return nil
@@ -104,16 +110,13 @@ func (vd *Driver) DeleteMachine(machinename string, clustername string) error {
 // NewMachine creates a VM.
 // It also starts the VM, changes the hostname, saves the IP address, and stops
 // it again.
-// It starts by copying the VHDX file appropriate for the specified k8sversion
-// to the driver cache location for VM disks.
+// It uses a differencing VHDX file backed by the cached master image for the
+// specified k8sversion in the driver cache location for VM disks.
 // It then runs the following Cmdlets, in order:
-//   $newvm = New-VM -Name $machineName -Generation 1 -Path $machinePath -VHDPath $vhdpath -SwitchName "Default Switch"
+//   New-VHD -Path $diffVhdPath -ParentPath $parentVhdPath -Differencing
+//   $newvm = New-VM -Name $machineName -Generation 1 -Path $machinePath -VHDPath $diffVhdPath -SwitchName "Default Switch"
 //   Set-VM $newvm -StaticMemory -MemoryStartupBytes 2147483648 -ProcessorCount 2 -CheckpointType Disabled
 // through an interface script.
-// The first creates a Hyper-V "Generation 1" VM which uses the VHDX file mentioned
-// above, and connects it to the Hyper-V default network switch.
-// The second turns off dynamic memory and checkpoints on the VM, and sets memory
-// to 2GB and core count to 2 (hardcoded for now).
 func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion string) (drivercore.Machine, error) {
 	if !vd.validate() {
 		return nil, vd
@@ -121,31 +124,52 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 
 	qualifiedmachinename := vd.QualifiedMachineName(machinename, clustername)
 
-	kuttilog.Println(kuttilog.Info, "Importing image...")
+	// Fail fast if a machine with this name already exists
+	if existingMachine, err := vd.GetMachine(machinename, clustername); err == nil && existingMachine != nil {
+		return nil, fmt.Errorf("machine %s already exists in cluster %s", machinename, clustername)
+	}
 
+	// 1. Get the local cached base image
+	kuttilog.Println(kuttilog.Info, "Verifying base image...")
 	vhdfile, err := imagepathfromk8sversion(k8sversion)
+	if err != nil {
+		return nil, err
+	}
+	vhdfile, err = filepath.Abs(vhdfile)
 	if err != nil {
 		return nil, err
 	}
 
 	if _, err = os.Stat(vhdfile); err != nil {
-		return nil, fmt.Errorf("could not retrieve image %s: %v", vhdfile, err)
+		return nil, fmt.Errorf("cached image not found for K8s version %s at %s: %v", k8sversion, vhdfile, err)
 	}
 
+	// 2. Prepare VM differencing disk path
 	destdir, err := diskDir()
 	if err != nil {
 		return nil, err
 	}
 
 	destfile := filepath.Join(destdir, qualifiedmachinename+".vhdx")
-	err = workspace.CopyFile(vhdfile, destfile, 524288000, true)
+	destfile, err = filepath.Abs(destfile)
 	if err != nil {
-		return nil, fmt.Errorf("could not import image %s: %v", vhdfile, err)
+		return nil, err
 	}
 
-	// Create new VM
-	machinepath, _ := machineDir()
+	// Clear leftover disk file from any previous failed run
+	_ = os.Remove(destfile)
 
+	machinepath, err := machineDir()
+	if err != nil {
+		return nil, err
+	}
+	machinepath, err = filepath.Abs(machinepath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Create differencing disk and VM
+	kuttilog.Println(kuttilog.Info, "Creating differencing disk and VM...")
 	newmachine := &Machine{
 		driver:      vd,
 		name:        machinename,
@@ -153,36 +177,37 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 		status:      drivercore.MachineStatus("Creating"),
 	}
 
-	result, err := vd.runwithresults("newmachine", qualifiedmachinename, machinepath, destfile)
+	result, err := vd.runwithresults("newmachine", qualifiedmachinename, machinepath, destfile, vhdfile)
 	if err != nil {
+		_ = deletemachinefiles(qualifiedmachinename)
 		return nil, fmt.Errorf("could not create host '%v': %v", machinename, err)
 	}
 
 	if !result.Success {
-		deletemachinefiles(qualifiedmachinename)
-
+		_ = deletemachinefiles(qualifiedmachinename)
 		return nil, fmt.Errorf("could not create host '%v': %v", machinename, result.ErrorMessage)
 	}
 
-	// Start the host
+	// 4. Start the host
 	kuttilog.Println(kuttilog.Info, "Starting host...")
 	err = newmachine.Start()
 	if err != nil {
-		return newmachine, err
+		kuttilog.Printf(kuttilog.Info, "Failed to start host: %v. Rolling back...", err)
+		if delErr := vd.DeleteMachine(machinename, clustername); delErr != nil {
+			kuttilog.Printf(kuttilog.Info, "Rollback also failed: %v", delErr)
+		}
+		return nil, fmt.Errorf("could not start machine %s: %v", machinename, err)
 	}
+
 	// TODO: Try to parameterize the timeout
 	newmachine.WaitForStateChange(25)
 
-	// Save the IP Address
-	// The first IP address should be DHCP-assigned.
-	// This may fail if we check too soon. So, we check
-	// up to three times.
+	// 5. Fetch IP Address
 	ipSet := false
 	for ipretries := 1; ipretries < 4; ipretries++ {
 		kuttilog.Printf(kuttilog.Info, "Fetching IP address (attempt %v/3)...", ipretries)
 
 		if newmachine.savedipaddress != "" {
-			// TODO: verify IP address here
 			kuttilog.Printf(kuttilog.Info, "Obtained IP address '%v'", newmachine.savedipaddress)
 			ipSet = true
 			break
@@ -191,17 +216,17 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 		kuttilog.Printf(kuttilog.Info, "Failed. Waiting %v seconds before retry...", ipretries*10)
 		time.Sleep(time.Duration(ipretries*10) * time.Second)
 
-		newmachine.get()
+		_ = newmachine.get()
 	}
 
 	if !ipSet {
-		kuttilog.Printf(0, "Error: Failed to get IP address. You may have to delete this node and recreate it manually.")
+		kuttilog.Println(kuttilog.Info, "Warning: Failed to get IP address. You may have to delete this node and recreate it manually.")
 	}
 
-	// Change the name
+	// 6. Change the hostname
 	for renameretries := 1; renameretries < 4; renameretries++ {
 		kuttilog.Printf(kuttilog.Info, "Renaming host (attempt %v/3)...", renameretries)
-		err = renamemachine(newmachine, machinename)
+		err = newmachine.ExecuteCommand(drivercore.RenameMachine, machinename)
 		if err == nil {
 			break
 		}
@@ -210,12 +235,17 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 	}
 
 	if err != nil {
-		return newmachine, err
+		kuttilog.Printf(kuttilog.Info, "Failed to rename host after 3 attempts: %v. Rolling back...", err)
+		if delErr := vd.DeleteMachine(machinename, clustername); delErr != nil {
+			kuttilog.Printf(kuttilog.Info, "Rollback also failed: %v", delErr)
+		}
+		return nil, fmt.Errorf("could not rename machine %s: %v", machinename, err)
 	}
 	kuttilog.Println(kuttilog.Info, "Host renamed.")
 
+	// 7. Stop host
 	kuttilog.Println(kuttilog.Info, "Stopping host...")
-	newmachine.Stop()
+	_ = newmachine.Stop()
 
 	newmachine.status = drivercore.MachineStatusStopped
 

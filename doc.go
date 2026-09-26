@@ -5,8 +5,8 @@
 // For cluster networking, it uses the Hyper-V default switch.
 //
 // For nodes, it creates virtual machines with pre-set settings, and
-// attaches copies of VHDX disks, maintained by the companion
-// driver-hyperv-images project.
+// attaches differencing VHDX disks backed by master images maintained by
+// the companion driver-hyperv-images project.
 //
 // For images, it uses the aforesaid VHDX files, downloading the list
 // from the URL pointed to by the ImagesSourceURL variable.

@@ -240,6 +240,9 @@ func (vh *Machine) get() error {
 	if err != nil {
 		return err
 	}
+	if !output.Success {
+		return errors.New(output.ErrorMessage)
+	}
 
 	return vh.fromdriverresult(output)
 }

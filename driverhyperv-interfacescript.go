@@ -18,7 +18,7 @@ type driverresult struct {
 	Payload      map[string]interface{}
 }
 
-const scriptVersion = "0.2"
+const scriptVersion = "0.3"
 
 var scriptname = "hypervmanage-" + scriptVersion + ".ps1"
 

@@ -162,21 +162,27 @@ Function New-KuttiVM() {
         [string]
         $machinePath,
         [string]
-        $vhdpath
+        $diffVhdPath,
+        [string]
+        $parentVhdPath
     )
 
     $result = getresult
-    If ([string]::IsNullOrEmpty($machineName) -or [string]::IsNullOrEmpty($machinepath) -or [string]::IsNullOrEmpty($vhdpath)) {
-        $result.ErrorMessage = "machine name or machinepath or vhdpath not specified"
+    If ([string]::IsNullOrEmpty($machineName) -or [string]::IsNullOrEmpty($machinePath) -or [string]::IsNullOrEmpty($diffVhdPath) -or [string]::IsNullOrEmpty($parentVhdPath)) {
+        $result.ErrorMessage = "machine name, machinepath, diffvhdpath, or parentvhdpath not specified"
     }
     Else {
         Try {
-            $newvm = Hyper-V\New-VM -Name $machineName -Generation 1 -Path $machinePath -VHDPath $vhdpath -SwitchName "Default Switch"
-            Hyper-V\Set-VM $newvm -StaticMemory -MemoryStartupBytes 2147483648 -ProcessorCount 2 -CheckpointType Disabled
+            $null = Hyper-V\New-VHD -Path $diffVhdPath -ParentPath $parentVhdPath -Differencing -ErrorAction Stop
+            $newvm = Hyper-V\New-VM -Name $machineName -Generation 1 -Path $machinePath -VHDPath $diffVhdPath -SwitchName "Default Switch" -ErrorAction Stop
+            Hyper-V\Set-VM $newvm -StaticMemory -MemoryStartupBytes 2147483648 -ProcessorCount 2 -CheckpointType Disabled -ErrorAction Stop
 
             $result.Success = $true
         }
         Catch {
+            If (Test-Path $diffVhdPath) {
+                Remove-Item -Path $diffVhdPath -Force -ErrorAction SilentlyContinue
+            }
             $result.ErrorMessage = $_.ToString()
         }
     }
@@ -236,9 +242,44 @@ Function Remove-KuttiVM() {
     }
     Else {
         Try {
-            Hyper-V\Remove-VM -Name $machineName -ErrorAction Stop -Force
+            $vm = Hyper-V\Get-VM -Name $machineName -ErrorAction SilentlyContinue
+            If ($null -ne $vm) {
+                If ($vm.State -eq [Microsoft.HyperV.PowerShell.VMState]::Running) {
+                    Hyper-V\Stop-VM -VM $vm -TurnOff -Force -ErrorAction SilentlyContinue
+                }
+                Hyper-V\Remove-VM -VM $vm -ErrorAction Stop -Force
+            }
 
             $result.Success = $true
+        }
+        Catch {
+            $result.ErrorMessage = $_.ToString()
+        }
+    }
+
+    $result | ConvertTo-Json
+}
+
+Function Get-KuttiVHDParent() {
+    param (
+        [string]
+        $vhdPath
+    )
+
+    $result = getresult
+    If ([string]::IsNullOrEmpty($vhdPath)) {
+        $result.ErrorMessage = "vhdpath not specified"
+    }
+    Else {
+        Try {
+            $vhd = Hyper-V\Get-VHD -Path $vhdPath -ErrorAction Stop
+            $parentPath = IfNull $vhd.ParentPath ""
+            $vhdresult = [PSCustomObject]@{
+                ParentPath = $parentPath
+                VhdType    = $vhd.VhdType.ToString()
+            }
+            $result.Success = $true
+            $result.PayLoad = $vhdresult
         }
         Catch {
             $result.ErrorMessage = $_.ToString()
@@ -265,7 +306,8 @@ Switch ($args[0].ToString().ToLowerInvariant()) {
     "forcestopmachine" { Stop-KuttiVM $args[1] $true }
     "waitmachine" { Wait-KuttiVM $args[1] $args[2] $args[3] }
     "deletemachine" { Remove-KuttiVM $args[1] }
-    "newmachine" { New-KuttiVM $args[1] $args[2] $args[3] }
+    "newmachine" { New-KuttiVM $args[1] $args[2] $args[3] $args[4] }
+    "getvhdparent" { Get-KuttiVHDParent $args[1] }
     Default {
         $result = getresult
         $result.ErrorMessage = "invalid interface argument: " + $args[0]
