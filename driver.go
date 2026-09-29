@@ -72,6 +72,7 @@ func (vd *Driver) validate() bool {
 	}
 
 	vd.status = "Ready"
+	vd.errormessage = ""
 	vd.validated = true
 	return true
 }
@@ -85,5 +86,9 @@ func (vd *Driver) Status() string {
 // Error returns the last error returned in the driver.
 func (vd *Driver) Error() string {
 	vd.validate()
+	if vd.status != "Error" {
+		return ""
+	}
+
 	return vd.errormessage
 }

@@ -31,7 +31,7 @@ func (vh *Machine) runwithresults(execpath string, paramarray ...string) (string
 	output, err := client.RunWithResults(sshAddr, cmdLine)
 	if err != nil {
 		kuttilog.Printf(kuttilog.Debug, "SSH command error: %v, output: %s", err, output)
-		return "", err
+		return output, err
 	}
 	kuttilog.Printf(kuttilog.Debug, "SSH command output: %s", output)
 	return output, nil

@@ -14,7 +14,7 @@ require (
 
 require (
 	github.com/kuttiproject/kuttilog v0.2.1
-	github.com/kuttiproject/sshclient v0.2.1
+	github.com/kuttiproject/sshclient v0.2.2
 )
 
 require (
