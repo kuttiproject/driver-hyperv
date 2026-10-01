@@ -15,7 +15,7 @@ import (
 
 // ImagesVersion defines the image repository version for the current version
 // of the driver.
-const ImagesVersion = "0.1"
+const ImagesVersion = "0.2"
 
 const imagesConfigFile = "driver-hyperv-images.json"
 
