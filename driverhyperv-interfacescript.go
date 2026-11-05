@@ -22,7 +22,11 @@ const scriptVersion = "0.3"
 
 var scriptname = "hypervmanage-" + scriptVersion + ".ps1"
 
-func findPowerShell() (string, error) {
+// findPowerShell finds the PowerShell to run the interface script with. It is
+// a variable so that tests can replace it.
+var findPowerShell = lookupPowerShell
+
+func lookupPowerShell() (string, error) {
 	// First, try looking up Windows PowerShell on the path
 	toolpath, err := exec.LookPath("powershell.exe")
 	if err == nil {
