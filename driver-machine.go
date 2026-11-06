@@ -131,7 +131,7 @@ func (vd *Driver) NewMachine(machinename string, clustername string, k8sversion 
 
 	// 1. Get the local cached base image
 	kuttilog.Println(kuttilog.Info, "Verifying base image...")
-	vhdfile, err := imagepathfromk8sversion(k8sversion)
+	vhdfile, err := imagestore.ImagePath(k8sversion)
 	if err != nil {
 		return nil, err
 	}

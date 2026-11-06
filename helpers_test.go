@@ -29,7 +29,22 @@ func (quietlogger) Println(v ...interface{})          {}
 // needs no Hyper-V.
 const fakePowerShellEnv = "KUTTI_TEST_FAKE_POWERSHELL"
 
+var probeSink []interface{}
+
 func TestMain(m *testing.M) {
+	// A process that only imports the package, for
+	// TestImportingThePackageDoesNothing. It refers to what a program that
+	// uses the driver refers to, so that the linker does not leave out the
+	// initialization of anything the driver needs, but it calls nothing.
+	if os.Getenv(importProbeEnv) != "" {
+		d := &Driver{}
+		probeSink = []interface{}{
+			d.UpdateImageList, d.ValidK8sVersion, d.K8sVersions, d.ListImages, d.GetImage,
+			d.NewMachine, d.Status,
+		}
+		os.Exit(0)
+	}
+
 	if os.Getenv(fakePowerShellEnv) != "" {
 		os.Exit(fakePowerShell(os.Args[1:]))
 	}
@@ -69,6 +84,8 @@ func printFake(result fakeresult) int {
 //	                 Hyper-V is not enabled
 //	garbage          something that is not JSON
 //	exit             exit with an error
+//
+// "getmachine <name>" says that there is no such machine.
 //
 // "getvhdparent <disk>" answers according to files next to the disk:
 //
@@ -112,6 +129,10 @@ func fakePowerShell(args []string) int {
 			Success: true,
 			PayLoad: map[string]interface{}{"HypervisorPresent": true, "Permissions": true, "PermissionLevel": "administrator"},
 		})
+
+	case "getmachine":
+		// No machine exists.
+		return printFake(fakeresult{ErrorMessage: "machine not found"})
 
 	case "getvhdparent":
 		if len(rest) == 0 {

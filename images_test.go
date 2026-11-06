@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -103,12 +104,15 @@ type imageserver struct {
 	images   []testimage
 	listcode int
 	files    map[string][]byte
+	rawlist  string
+	hits     map[string]int
+	delay    time.Duration
 }
 
 func newImageServer(t *testing.T, images ...testimage) *imageserver {
 	t.Helper()
 
-	is := &imageserver{listcode: http.StatusOK, files: map[string][]byte{}}
+	is := &imageserver{listcode: http.StatusOK, files: map[string][]byte{}, hits: map[string]int{}}
 	is.set(t, images...)
 
 	is.Server = httptest.NewServer(http.HandlerFunc(is.handle))
@@ -144,6 +148,30 @@ func (is *imageserver) serveFile(version string, data []byte) {
 	is.files["/kutti-"+version+".vhdx.zip"] = data
 }
 
+// serveRawList serves exactly this as the list, whatever it is.
+func (is *imageserver) serveRawList(body string) {
+	is.mu.Lock()
+	defer is.mu.Unlock()
+
+	is.rawlist = body
+}
+
+// slowDownFiles makes the server wait before it serves a file.
+func (is *imageserver) slowDownFiles(delay time.Duration) {
+	is.mu.Lock()
+	defer is.mu.Unlock()
+
+	is.delay = delay
+}
+
+// fileRequests returns how many times the file of an image was requested.
+func (is *imageserver) fileRequests(version string) int {
+	is.mu.Lock()
+	defer is.mu.Unlock()
+
+	return is.hits["/kutti-"+version+".vhdx.zip"]
+}
+
 func (is *imageserver) failList(code int) {
 	is.mu.Lock()
 	defer is.mu.Unlock()
@@ -153,11 +181,24 @@ func (is *imageserver) failList(code int) {
 
 func (is *imageserver) handle(w http.ResponseWriter, r *http.Request) {
 	is.mu.Lock()
+	delay := is.delay
+	is.hits[r.URL.Path]++
+	is.mu.Unlock()
+
+	if r.URL.Path != "/"+imagesConfigFile {
+		time.Sleep(delay)
+	}
+
+	is.mu.Lock()
 	defer is.mu.Unlock()
 
 	if r.URL.Path == "/"+imagesConfigFile {
 		if is.listcode != http.StatusOK {
 			http.Error(w, "no list", is.listcode)
+			return
+		}
+		if is.rawlist != "" {
+			w.Write([]byte(is.rawlist))
 			return
 		}
 
@@ -305,8 +346,10 @@ func TestImageListQueries(t *testing.T) {
 	if current.K8sVersion() != "1.37" || current.Deprecated() {
 		t.Errorf("image 1.37 is %q, deprecated %v", current.K8sVersion(), current.Deprecated())
 	}
-	if current.Status() == drivercore.ImageStatusDownloaded {
-		t.Error("a new image is marked as downloaded")
+	// The published lists say NotDownloaded, but the status of a new image
+	// is what the local list says, which is drivercore's value.
+	if current.Status() != drivercore.ImageStatusNotDownloaded {
+		t.Errorf("the status of a new image is %q", current.Status())
 	}
 
 	_, err = d.GetImage("1.99")
@@ -980,5 +1023,275 @@ func TestImageListIsKeptInTheConfigDirectory(t *testing.T) {
 
 	if versions := (&Driver{}).K8sVersions(); len(versions) != 1 || versions[0] != "1.38" {
 		t.Errorf("versions are %v", versions)
+	}
+}
+
+// The image methods give a nil image with an error, not an image that is nil
+// inside.
+func TestGetImageOfUnknownVersionGivesNoImage(t *testing.T) {
+	testStorage(t)
+	newImageServer(t, testimage{version: "1.37", content: content("b", 100)})
+	updateList(t)
+
+	img, err := (&Driver{}).GetImage("1.99")
+	if err == nil || img != nil {
+		t.Errorf("GetImage of an unknown version returned %v, %v", img, err)
+	}
+}
+
+// A list that cannot be used does not replace the list that works.
+func TestUpdateImageListWithBadListKeepsList(t *testing.T) {
+	testStorage(t)
+	server := newImageServer(t, testimage{version: "1.37", content: content("b", 100)})
+	updateList(t)
+
+	bad := []struct{ name, body string }{
+		{"not JSON", "this is not a list"},
+		{"no images", `{}`},
+		{"version that is a path", `{"../x": {"ImageK8sVersion": "../x", "ImageChecksum": "abc", "ImageSourceURL": "http://example.com/x", "ImageStatus": "NotDownloaded"}}`},
+		{"entry for another version", `{"1.38": {"ImageK8sVersion": "1.39", "ImageChecksum": "abc", "ImageSourceURL": "http://example.com/x", "ImageStatus": "NotDownloaded"}}`},
+	}
+	for _, c := range bad {
+		server.serveRawList(c.body)
+
+		if err := (&Driver{}).UpdateImageList(); err == nil {
+			t.Errorf("%s: UpdateImageList succeeded", c.name)
+		}
+		if versions := (&Driver{}).K8sVersions(); len(versions) != 1 || versions[0] != "1.37" {
+			t.Errorf("%s: versions are %v", c.name, versions)
+		}
+	}
+}
+
+// Whatever status the published list gives to an image, it is not downloaded
+// until it has been fetched.
+func TestUpdateImageListIgnoresTheStatusInThePublishedList(t *testing.T) {
+	testStorage(t)
+	server := newImageServer(t, testimage{version: "1.37", content: content("b", 100)})
+	server.serveRawList(`{"1.37": {"ImageK8sVersion": "1.37", "ImageChecksum": "abc", "ImageSourceURL": "http://example.com/x", "ImageStatus": "Downloaded"}}`)
+	updateList(t)
+
+	if isDownloaded(t, "1.37") {
+		t.Error("an image that was never fetched is marked as downloaded")
+	}
+}
+
+func TestImagesAreListedInVersionOrder(t *testing.T) {
+	testStorage(t)
+	newImageServer(t,
+		testimage{version: "1.37", content: content("a", 10)},
+		testimage{version: "1.10", content: content("b", 10)},
+		testimage{version: "1.9", content: content("c", 10)},
+		testimage{version: "1.100", content: content("d", 10)},
+	)
+	updateList(t)
+
+	d := &Driver{}
+	expected := "1.9,1.10,1.37,1.100"
+
+	if got := strings.Join(d.K8sVersions(), ","); got != expected {
+		t.Errorf("K8sVersions returned %s, expected %s", got, expected)
+	}
+
+	images, err := d.ListImages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed []string
+	for _, img := range images {
+		listed = append(listed, img.K8sVersion())
+	}
+	if got := strings.Join(listed, ","); got != expected {
+		t.Errorf("ListImages returned %s, expected %s", got, expected)
+	}
+}
+
+// Two fetches of the same image, as by two kutti processes of one user, do
+// not download it twice or tread on each other.
+func TestFetchesOfOneImageAreSerialized(t *testing.T) {
+	root := testStorage(t)
+	image := testimage{version: "1.37", content: content("b", 1<<20)}
+	server := newImageServer(t, image)
+	updateList(t)
+	server.slowDownFiles(300 * time.Millisecond)
+
+	first, second := getImage(t, "1.37"), getImage(t, "1.37")
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i, img := range []drivercore.Image{first, second} {
+		wg.Add(1)
+		go func(i int, img drivercore.Image) {
+			defer wg.Done()
+			errs[i] = img.Fetch()
+		}(i, img)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("fetch %d failed: %v", i, err)
+		}
+	}
+	if hits := server.fileRequests("1.37"); hits != 1 {
+		t.Errorf("the image was downloaded %d times", hits)
+	}
+	if string(readFile(t, cachedImagePath(root, "1.37"))) != string(image.content) {
+		t.Error("the cached file does not hold the image")
+	}
+	if names := imageFiles(t, root); strings.Join(names, ",") != "kutti-1.37.vhdx" {
+		t.Errorf("the cache directory holds %v", names)
+	}
+}
+
+// Machines created by older versions of the driver depend on these names.
+func TestFilesInTheConfigDirectory(t *testing.T) {
+	root := testStorage(t)
+	newImageServer(t, testimage{version: "1.37", content: content("b", 1000)})
+	updateList(t)
+	if err := getImage(t, "1.37").Fetch(); err != nil {
+		t.Fatal(err)
+	}
+
+	entries, err := os.ReadDir(filepath.Dir(listFilePath(root)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+
+	expected := "driver-hyperv-images-1.37.lock,driver-hyperv-images.json,driver-hyperv-images.lock"
+	if got := strings.Join(names, ","); got != expected {
+		t.Errorf("the config directory holds %s, expected %s", got, expected)
+	}
+}
+
+// An image is downloaded into a work directory of the cache directory, so
+// that what is in progress is never taken for an image.
+func TestFetchDownloadsIntoAWorkDirInTheCache(t *testing.T) {
+	root := testStorage(t)
+	newImageServer(t, testimage{version: "1.37", content: content("b", 3<<20)})
+	updateList(t)
+
+	cache := cacheDirPath(root)
+	var found []string
+	err := getImage(t, "1.37").FetchWithProgress(func(current int64, total int64) {
+		if found != nil {
+			return
+		}
+
+		filepath.WalkDir(cache, func(path string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && !strings.HasPrefix(d.Name(), "hypervmanage-") {
+				rel, _ := filepath.Rel(cache, path)
+				found = append(found, rel)
+			}
+			return nil
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(found) != 1 {
+		t.Fatalf("during the download the cache directory held %v", found)
+	}
+	// The download makes its own temporary file, named for the file it will
+	// become.
+	if dir, name := filepath.Split(found[0]); dir == "" || !strings.HasPrefix(name, "kutti-k8s-1.37.download.zip") {
+		t.Errorf("the image was downloaded into %s", found[0])
+	}
+}
+
+// The unpacked file is made in a work directory too, and is gone when the
+// import is done, whether it worked or not.
+func TestUnpackedFileIsMadeInAWorkDirThatIsRemoved(t *testing.T) {
+	root := testStorage(t)
+	image := testimage{version: "1.37", content: content("b", 5000)}
+	newImageServer(t, image)
+	updateList(t)
+
+	wrong := filepath.Join(t.TempDir(), "wrong.zip")
+	writeFile(t, wrong, makeZip(t, zipentry{"x.vhdx", content("x", 5000)}))
+	right := filepath.Join(t.TempDir(), "right.zip")
+	writeFile(t, right, image.zipped(t))
+
+	for _, source := range []string{wrong, right} {
+		getImage(t, "1.37").FromFile(source)
+
+		if names := imageFiles(t, root); len(names) > 1 || (len(names) == 1 && names[0] != "kutti-1.37.vhdx") {
+			t.Errorf("after importing %s the cache directory holds %v", filepath.Base(source), names)
+		}
+	}
+}
+
+// corruptZip makes a zip file with one entry, in which a byte of the stored
+// data is changed, so that reading it fails at the end, when the checksum is
+// checked.
+func corruptZip(t *testing.T, name string, data []byte) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	f, err := w.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err = w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	result := buf.Bytes()
+	at := bytes.Index(result, data[:32])
+	if at < 0 {
+		t.Fatal("the data is not stored in the zip file")
+	}
+	result[at+16] ^= 0xff
+
+	return result
+}
+
+// A zip file that is damaged is not unpacked, and nothing is kept.
+func TestFromFileOfDamagedZipFileKeepsNothing(t *testing.T) {
+	root := testStorage(t)
+	image := testimage{version: "1.37", content: content("b", 5000)}
+	newImageServer(t, image)
+	updateList(t)
+
+	source := filepath.Join(t.TempDir(), "damaged.zip")
+	writeFile(t, source, corruptZip(t, "kutti-1.37.vhdx", image.content))
+
+	err := getImage(t, "1.37").FromFile(source)
+	if !errors.Is(err, zip.ErrChecksum) {
+		t.Fatalf("FromFile returned %v, expected a checksum error", err)
+	}
+	if names := imageFiles(t, root); len(names) != 0 {
+		t.Errorf("the cache directory holds %v", names)
+	}
+	if isDownloaded(t, "1.37") {
+		t.Error("the image is marked as downloaded")
+	}
+}
+
+func TestFetchOfDamagedZipFileKeepsNothing(t *testing.T) {
+	root := testStorage(t)
+	image := testimage{version: "1.37", content: content("b", 5000)}
+	server := newImageServer(t, image)
+	updateList(t)
+	server.serveFile("1.37", corruptZip(t, "kutti-1.37.vhdx", image.content))
+
+	err := getImage(t, "1.37").Fetch()
+	if !errors.Is(err, zip.ErrChecksum) {
+		t.Fatalf("Fetch returned %v, expected a checksum error", err)
+	}
+	if names := imageFiles(t, root); len(names) != 0 {
+		t.Errorf("the cache directory holds %v", names)
+	}
+	if isDownloaded(t, "1.37") {
+		t.Error("the image is marked as downloaded")
 	}
 }

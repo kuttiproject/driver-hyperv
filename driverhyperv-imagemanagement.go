@@ -1,14 +1,15 @@
 package driverhyperv
 
 import (
-	"encoding/json"
+	"archive/zip"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/kuttiproject/drivercore"
+	"github.com/kuttiproject/imagecore"
 	"github.com/kuttiproject/kuttilog"
 	"github.com/kuttiproject/workspace"
 )
@@ -22,132 +23,86 @@ const imagesConfigFile = "driver-hyperv-images.json"
 // ImagesSourceURL is the location where the master list of images can be found
 var ImagesSourceURL = "https://github.com/kuttiproject/driver-hyperv-images/releases/download/v" + ImagesVersion + "/" + imagesConfigFile
 
-var (
-	imagedata             = &imageconfigdata{}
-	imageconfigmanager, _ = workspace.NewFileConfigManager(imagesConfigFile, imagedata)
-)
+// imagestore manages the image list and the cached image files. See the
+// imagecore package.
+//
+// It is made by init, and not in the declaration, because isImageInUse needs
+// it to find the path of an image, and Go does not allow a variable to
+// depend on itself in this way. Making it does no I/O.
+var imagestore *imagecore.Store
 
-type imageconfigdata struct {
-	images map[string]*Image
-}
-
-func (icd *imageconfigdata) Serialize() ([]byte, error) {
-	return json.Marshal(icd.images)
-}
-
-func (icd *imageconfigdata) Deserialize(data []byte) error {
-	loaddata := make(map[string]*Image)
-	err := json.Unmarshal(data, &loaddata)
-	if err == nil {
-		icd.images = loaddata
-	}
-	return err
-}
-
-func (icd *imageconfigdata) SetDefaults() {
-	icd.images = defaultimages()
+func init() {
+	imagestore = imagecore.New(imagecore.Config{
+		DriverName:     "driver-hyperv",
+		ConfigFile:     imagesConfigFile,
+		ImageExtension: ".vhdx",
+		DownloadSuffix: ".download.zip",
+		SourceURL:      func() string { return ImagesSourceURL },
+		CacheDir:       hypervCacheDir,
+		Unpack:         unpackImage,
+		InUse:          isImageInUse,
+	})
 }
 
 func hypervCacheDir() (string, error) {
 	return workspace.CacheSubDir("driver-hyperv")
 }
 
-func hypervConfigDir() (string, error) {
-	return workspace.ConfigDir()
+// unpackImage turns a file that is given to the image store into the .vhdx
+// file to check and cache. A .vhdx file is used as it is, and is never
+// removed. A .zip file must have exactly one entry, which is the .vhdx file.
+// It is unpacked into workdir, which the image store removes.
+func unpackImage(path string, workdir string) (string, func(), error) {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".vhdx":
+		return path, nil, nil
+	case ".zip":
+		unzipped, err := unzipImage(path, workdir)
+		return unzipped, nil, err
+	default:
+		return "", nil, errors.New("only .vhdx or .zip files allowed")
+	}
 }
 
-func defaultimages() map[string]*Image {
-	return map[string]*Image{}
-}
+// unzipImage unpacks the only entry of a zip file into workdir, and returns
+// the path of the file it made. The name of the entry is not used.
+func unzipImage(zipfilepath string, workdir string) (string, error) {
+	kuttilog.Println(kuttilog.Info, "Decompressing downloaded file...")
 
-func imagenamefromk8sversion(k8sversion string) string {
-	return "kutti-" + k8sversion + ".vhdx"
-}
+	unzippedfilepath := filepath.Join(workdir, "image.vhdx")
+	kuttilog.Printf(kuttilog.Debug, "Decompressing '%v' into '%v'...", zipfilepath, unzippedfilepath)
 
-func imagepathfromk8sversion(k8sversion string) (string, error) {
-	cachedir, err := hypervCacheDir()
+	unzipper, err := zip.OpenReader(zipfilepath)
+	if err != nil {
+		return "", err
+	}
+	defer unzipper.Close()
+
+	if len(unzipper.File) != 1 {
+		return "", errors.New("invalid compressed image")
+	}
+
+	srcFile, err := unzipper.File[0].Open()
+	if err != nil {
+		return "", err
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.Create(unzippedfilepath)
 	if err != nil {
 		return "", err
 	}
 
-	result := filepath.Join(cachedir, imagenamefromk8sversion(k8sversion))
-	return result, nil
-}
-
-func addfromfile(k8sversion string, filepath string, checksum string) error {
-	kuttilog.Println(kuttilog.Info, "Checking image validity...")
-	filechecksum, err := workspace.ChecksumFile(filepath)
+	_, err = io.Copy(dstFile, srcFile)
+	if closeerr := dstFile.Close(); err == nil {
+		err = closeerr
+	}
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if filechecksum != checksum {
-		kuttilog.Printf(kuttilog.Debug, "checksum for file %v failed.\nWanted: %v\nGot   : %v\n", filepath, checksum, filechecksum)
-		return errors.New("file is not valid")
-	}
-
-	localfilepath, err := imagepathfromk8sversion(k8sversion)
-	if err != nil {
-		return err
-	}
-
-	// If a cached copy of this image already exists, machines may already
-	// have differencing disks backed by it. Overwriting it in place with
-	// different content would silently corrupt every one of those disks.
-	if existingchecksum, chkerr := workspace.ChecksumFile(localfilepath); chkerr == nil {
-		if existingchecksum == checksum {
-			// Already have this exact file cached; nothing to do.
-			return nil
-		}
-
-		inuse, useerr := isImageInUse(k8sversion)
-		if useerr != nil {
-			return fmt.Errorf(
-				"cannot replace cached image for K8s version %s: could not verify it is unused: %v",
-				k8sversion, useerr,
-			)
-		}
-		if inuse {
-			return fmt.Errorf(
-				"cannot replace cached image for K8s version %s: it is in use as a backing disk by one or more machines",
-				k8sversion,
-			)
-		}
-	}
-
-	kuttilog.Println(kuttilog.Info, "Copying image to local cache...")
-	// A 128KiB buffer should help
-	const BUFSIZE = 131072
-	err = workspace.CopyFile(filepath, localfilepath, BUFSIZE, true)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func removefile(k8sversion string) error {
-	kuttilog.Printf(kuttilog.Info, "Purging cached image for Kubernetes %s...", k8sversion)
-	inuse, err := isImageInUse(k8sversion)
-	if err != nil {
-		return fmt.Errorf(
-			"cannot remove cached image for K8s version %s: could not verify it is unused: %v",
-			k8sversion, err,
-		)
-	}
-	if inuse {
-		return fmt.Errorf(
-			"cannot remove cached image for K8s version %s: it is in use as a backing disk by one or more machines",
-			k8sversion,
-		)
-	}
-
-	filename, err := imagepathfromk8sversion(k8sversion)
-	if err != nil {
-		return err
-	}
-	kuttilog.Printf(kuttilog.Debug, "Deleting image file: %s", filename)
-	return workspace.RemoveFile(filename)
+	kuttilog.Println(kuttilog.Info, "Finished decompressing downloaded file.")
+	return unzippedfilepath, nil
 }
 
 // isImageInUse reports whether the cached master image for k8sversion is
@@ -155,7 +110,7 @@ func removefile(k8sversion string) error {
 // disks directory. It is used to prevent removing or overwriting a master
 // image out from under machines that depend on it.
 func isImageInUse(k8sversion string) (bool, error) {
-	imagePath, err := imagepathfromk8sversion(k8sversion)
+	imagePath, err := imagestore.ImagePath(k8sversion)
 	if err != nil {
 		return false, err
 	}
@@ -217,54 +172,4 @@ func isImageInUse(k8sversion string) (bool, error) {
 
 	kuttilog.Printf(kuttilog.Debug, "Image %s is not in use by any differencing disks", imagePath)
 	return false, nil
-}
-
-func fetchimagelist() error {
-	// Download image list into temp directory
-	confdir, _ := hypervConfigDir()
-	tempfilename := "hypervimagesnewlist.json"
-	tempfilepath := filepath.Join(confdir, tempfilename)
-
-	kuttilog.Printf(kuttilog.Debug, "confdir: %v\ntempfilepath: %v\n", confdir, tempfilepath)
-
-	kuttilog.Println(kuttilog.Info, "Fetching image list...")
-	kuttilog.Printf(kuttilog.Debug, "Fetching from %v into %v.", ImagesSourceURL, tempfilepath)
-	err := workspace.DownloadFile(ImagesSourceURL, tempfilepath)
-	kuttilog.Printf(kuttilog.Debug, "Error: %v", err)
-	if err != nil {
-		return err
-	}
-	defer workspace.RemoveFile(tempfilepath)
-
-	// Load into object
-	tempimagedata := &imageconfigdata{}
-	tempconfigmanager, err := workspace.NewFileConfigManager(tempfilename, tempimagedata)
-	if err != nil {
-		return err
-	}
-
-	err = tempconfigmanager.Load()
-	if err != nil {
-		return err
-	}
-
-	// Compare against current and update
-	for key, newimage := range tempimagedata.images {
-		oldimage := imagedata.images[key]
-		if oldimage != nil &&
-			newimage.imageChecksum == oldimage.imageChecksum &&
-			newimage.imageSourceURL == oldimage.imageSourceURL &&
-			oldimage.imageStatus == drivercore.ImageStatusDownloaded {
-
-			newimage.imageStatus = drivercore.ImageStatusDownloaded
-		}
-	}
-
-	// Make it current
-	imagedata.images = tempimagedata.images
-
-	// Save as local configuration
-	imageconfigmanager.Save()
-
-	return nil
 }
