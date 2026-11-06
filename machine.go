@@ -3,6 +3,7 @@ package driverhyperv
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/kuttiproject/drivercore"
@@ -183,20 +184,30 @@ func (vh *Machine) ForceStop() error {
 	return nil
 }
 
-// WaitForStateChange waits the specified number of seconds,
-// or until the Machine status changes.
-// It does this by running the command:
+// WaitForStateChange waits up to the specified number of seconds, or until the
+// Machine status changes.
+// It does this through the waitmachine command of the interface script. If the
+// Machine is starting, the script runs the command:
 //   Wait-VM -ErrorAction Stop -VMName $machineName -Timeout $timeOutSeconds -For IPAddress
-// if the Machine is starting, or the command:
-//   Wait-VM -ErrorAction Stop -VMName $machineName -Timeout $timeOutSeconds -For Reboot
-// if the Machine is stopping.
-// WaitForStateChange should be called after a call to Start, before
-// any other operation. From observation, it should not be called _before_ Stop.
+// If the Machine is stopping, Wait-VM cannot be used, and the script looks at
+// the state of the VM until it is Off. If the command works, the Machine is
+// updated from its result. If it does not, for example because the time ran
+// out, the Machine is left as it was.
+// A timeout that is not positive is taken by the script as 25 seconds.
+// WaitForStateChange should be called after a call to Start or Stop, before
+// any other operation.
 func (vh *Machine) WaitForStateChange(timeoutinseconds int) {
-	result, _ := vh.driver.runwithresults("waitmachine", vh.qname(), string(vh.status), "25")
-	if result.Success {
-		vh.fromdriverresult(result)
+	result, err := vh.driver.runwithresults(
+		"waitmachine",
+		vh.qname(),
+		string(vh.status),
+		strconv.Itoa(timeoutinseconds),
+	)
+	if err != nil || !result.Success {
+		return
 	}
+
+	vh.fromdriverresult(result)
 }
 
 // ForwardPort is not supported for the Hyper-V driver.

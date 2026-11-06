@@ -87,6 +87,15 @@ func printFake(result fakeresult) int {
 //
 // "getmachine <name>" says that there is no such machine.
 //
+// "waitmachine <name> <status> <timeout>" answers according to
+// FAKE_PS_WAITMACHINE:
+//
+//	ok (or not set)  Success, with the machine in the state in
+//	                 FAKE_PS_WAIT_STATE, which is Running if not set
+//	unsuccessful     Success false, with an error message
+//	garbage          something that is not JSON
+//	exit             exit with an error
+//
 // "getvhdparent <disk>" answers according to files next to the disk:
 //
 //	<disk>.fail         exit with an error
@@ -128,6 +137,34 @@ func fakePowerShell(args []string) int {
 		return printFake(fakeresult{
 			Success: true,
 			PayLoad: map[string]interface{}{"HypervisorPresent": true, "Permissions": true, "PermissionLevel": "administrator"},
+		})
+
+	case "waitmachine":
+		if len(rest) < 3 {
+			return printFake(fakeresult{ErrorMessage: "machine name or machinestatus not specified"})
+		}
+
+		switch os.Getenv("FAKE_PS_WAITMACHINE") {
+		case "unsuccessful":
+			return printFake(fakeresult{ErrorMessage: "timed out waiting for the machine to stop"})
+		case "garbage":
+			fmt.Println("this is not json")
+			return 0
+		case "exit":
+			fmt.Fprintln(os.Stderr, "fake powershell: failed")
+			return 1
+		}
+
+		state := os.Getenv("FAKE_PS_WAIT_STATE")
+		if state == "" {
+			state = "Running"
+		}
+
+		return printFake(fakeresult{
+			Success: true,
+			PayLoad: map[string]interface{}{
+				"Machine": map[string]interface{}{"Name": rest[0], "IPAddress": "10.0.0.5", "State": state},
+			},
 		})
 
 	case "getmachine":
