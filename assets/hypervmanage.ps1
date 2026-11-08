@@ -196,7 +196,7 @@ Function Wait-KuttiVM() {
         $machineName,
         [string]
         $machineStatus,
-        [int64]
+        [string]
         $timeOutSeconds
     )
 
@@ -205,18 +205,35 @@ Function Wait-KuttiVM() {
         $result.ErrorMessage = "machine name or machinestatus not specified"
     }
     Else {
-        $params = @{}
-        Switch ($machineStatus) {
-            { $_ -in "Starting", "Started" } { $params = @{For = "IPAddress" } }
-            { $_ -in "Stopping", "Stopped" } { $params = @{For = "Reboot" } }
-        }
-
-        If ($timeOutSeconds -eq 0) {
-            $timeOutSeconds = 25
-        }
-
         Try {
-            Hyper-V\Wait-VM -ErrorAction Stop Hyper-V\-VMName $machineName -Timeout $timeOutSeconds @params
+            # A timeout that is missing, not a number, or not positive means 25 seconds.
+            $timeout = 0
+            If (-not [int]::TryParse($timeOutSeconds, [ref]$timeout) -or $timeout -le 0) {
+                $timeout = 25
+            }
+
+            If ($machineStatus -in "Stopping", "Stopped") {
+                # Wait-VM cannot wait for a machine to be off, so look at its state until it is.
+                $deadline = [DateTime]::UtcNow.AddSeconds($timeout)
+                While ($true) {
+                    $vm = Hyper-V\Get-VM -Name $machineName -ErrorAction Stop
+                    If ($vm.State -eq "Off") {
+                        Break
+                    }
+                    If ([DateTime]::UtcNow -ge $deadline) {
+                        Throw "timed out waiting for the machine to stop"
+                    }
+                    Start-Sleep -Milliseconds 500
+                }
+            }
+            Else {
+                $params = @{}
+                If ($machineStatus -in "Starting", "Started") {
+                    $params = @{For = "IPAddress" }
+                }
+
+                Hyper-V\Wait-VM -ErrorAction Stop -VMName $machineName -Timeout $timeout @params
+            }
 
             $vmresult = getkuttivmobject $machineName
             $result.Success = $true

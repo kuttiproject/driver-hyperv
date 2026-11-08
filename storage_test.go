@@ -54,7 +54,7 @@ func TestStorageDirectories(t *testing.T) {
 func TestScriptLocationAndContent(t *testing.T) {
 	root := testStorage(t)
 
-	if scriptname != "hypervmanage-0.3.ps1" {
+	if scriptname != "hypervmanage-0.4.ps1" {
 		t.Errorf("script name is %s", scriptname)
 	}
 
@@ -62,7 +62,7 @@ func TestScriptLocationAndContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scriptpath != filepath.Join(cacheDirPath(root), "hypervmanage-0.3.ps1") {
+	if scriptpath != filepath.Join(cacheDirPath(root), "hypervmanage-0.4.ps1") {
 		t.Errorf("script path is %s", scriptpath)
 	}
 

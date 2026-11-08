@@ -17,8 +17,8 @@ import (
 // The version and checksum of the driver-hyperv image
 // to use for the test.
 const (
-	TESTK8SVERSION  = "1.27"
-	TESTK8SCHECKSUM = "0c5487db0a68b60ad5eb8cf4897d24cd6d1731599f5d1c08e76be0d418b59f29"
+	TESTK8SVERSION  = "1.37"
+	TESTK8SCHECKSUM = "d7edd0a8cdb72c0632bec824f2c7f1b1ba77c857611044ed2fbb1a7dad13a9ab"
 )
 
 func TestDriverHyperV(t *testing.T) {

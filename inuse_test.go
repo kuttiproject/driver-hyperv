@@ -228,7 +228,7 @@ func TestInUseAsksPowerShellAboutEveryDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	script := filepath.Join(cacheDirPath(root), "hypervmanage-0.3.ps1")
+	script := filepath.Join(cacheDirPath(root), "hypervmanage-0.4.ps1")
 	prefix := "-NoProfile -NonInteractive -File " + script + " "
 	expected := []string{
 		prefix + "checkdriver",
