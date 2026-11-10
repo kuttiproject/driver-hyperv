@@ -65,7 +65,7 @@ func TestPowerShellIsRunWithTheInterfaceScript(t *testing.T) {
 	root := testStorage(t)
 	(&Driver{}).Status()
 
-	script := filepath.Join(cacheDirPath(root), "hypervmanage-0.4.ps1")
+	script := filepath.Join(cacheDirPath(root), scriptname)
 	expected := "-NoProfile -NonInteractive -File " + script + " checkdriver"
 
 	if calls := psCalls(t); len(calls) != 1 || calls[0] != expected {
