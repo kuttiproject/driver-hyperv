@@ -4,16 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/kuttiproject/drivercore"
 )
-
-type hypervmachinedata struct {
-	Name      string
-	IPAddress string
-	State     string
-}
 
 // The MachineStatus* constants add some Hyper-V specific statuses.
 const (
@@ -31,38 +24,6 @@ type Machine struct {
 	savedipaddress string
 	status         drivercore.MachineStatus
 	errormessage   string
-}
-
-func (hmd *hypervmachinedata) Machine(driver *Driver) *Machine {
-	var clustername string
-	var machinename string
-	var machinestatus drivercore.MachineStatus
-
-	switch hmd.State {
-	case "Off":
-		machinestatus = drivercore.MachineStatusStopped
-	case "Running":
-		machinestatus = drivercore.MachineStatusRunning
-	default:
-		machinestatus = drivercore.MachineStatus("Unknown")
-	}
-
-	nameparts := strings.Split(hmd.Name, "-")
-
-	if len(nameparts) > 2 {
-		clustername = nameparts[1]
-		machinename = nameparts[2]
-	} else {
-		machinename = nameparts[0]
-	}
-
-	return &Machine{
-		driver:         driver,
-		name:           machinename,
-		clustername:    clustername,
-		savedipaddress: hmd.IPAddress,
-		status:         machinestatus,
-	}
 }
 
 // Name is the name of the machine.
@@ -112,7 +73,9 @@ func (vh *Machine) SSHAddress() string {
 
 // Start starts a Machine.
 // It does this by running the command:
-//   Start-VM -Name <machinename>
+//
+//	Start-VM -Name <machinename>
+//
 // through an interface script.
 // Note that a Machine may not be ready for further operations at the end of this,
 // and therefore its status will Starting, not Started.
@@ -138,7 +101,9 @@ func (vh *Machine) Start() error {
 
 // Stop stops a Machine.
 // It does this by running the command:
-//   Stop-VM -Name <machinename> -Force
+//
+//	Stop-VM -Name <machinename> -Force
+//
 // Note that a Machine may not be ready for further operations at the end of this,
 // and therefore its status will be Stopping, not Stopped.
 // See WaitForStateChange().
@@ -163,7 +128,9 @@ func (vh *Machine) Stop() error {
 
 // ForceStop stops a Machine forcibly.
 // It does this by running the command:
-//   Stop-VM -Name <machinename> -TurnOff
+//
+//	Stop-VM -Name <machinename> -TurnOff
+//
 // through an interface script.
 // This operation will set the status to drivercore.MachineStatusStopped.
 func (vh *Machine) ForceStop() error {
@@ -188,7 +155,9 @@ func (vh *Machine) ForceStop() error {
 // Machine status changes.
 // It does this through the waitmachine command of the interface script. If the
 // Machine is starting, the script runs the command:
-//   Wait-VM -ErrorAction Stop -VMName $machineName -Timeout $timeOutSeconds -For IPAddress
+//
+//	Wait-VM -ErrorAction Stop -VMName $machineName -Timeout $timeOutSeconds -For IPAddress
+//
 // If the Machine is stopping, Wait-VM cannot be used, and the script looks at
 // the state of the VM until it is Off. If the command works, the Machine is
 // updated from its result. If it does not, for example because the time ran
@@ -263,23 +232,19 @@ func (vh *Machine) fromdriverresult(output *driverresult) error {
 	if !ok {
 		return errors.New("could not get machine data: interface error")
 	}
-	machinename := machinedatamap["Name"].(string)
 	machineip := machinedatamap["IPAddress"].(string)
 	machinestate := machinedatamap["State"].(string)
-
-	machinedata := &hypervmachinedata{
-		Name:      machinename,
-		IPAddress: machineip,
-		State:     machinestate,
+	switch machinestate {
+	case "Off":
+		vh.status = drivercore.MachineStatusStopped
+	case "Running":
+		vh.status = drivercore.MachineStatusRunning
+	default:
+		vh.status = drivercore.MachineStatus("Unknown")
 	}
-
-	tempResult := machinedata.Machine(vh.driver)
-
-	vh.name = tempResult.name
-	vh.clustername = tempResult.clustername
-	vh.savedipaddress = tempResult.savedipaddress
-	vh.status = tempResult.status
-
+	if machineip != "" {
+		vh.savedipaddress = machineip
+	}
 	return nil
 }
 
